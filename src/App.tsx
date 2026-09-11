@@ -157,22 +157,33 @@ export default function App() {
     localStorage.setItem('alba_settlements', JSON.stringify(settlements));
   }, [settlements]);
 
-  // 3. 앱 로그인 세션 (초기값 null 또는 기존 세션)
+  // 3. 앱 로그인 세션 (첫 화면은 로그인 안된 상태의 알바생 로그인 화면)
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
-    const saved = localStorage.getItem(USER_SESSION_STORAGE_KEY);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
+    try {
+      localStorage.removeItem(USER_SESSION_STORAGE_KEY);
+      sessionStorage.removeItem(USER_SESSION_STORAGE_KEY);
+    } catch (e) {}
     return null;
   });
 
   // 4. 모바일 뷰 탭
   const [currentTab, setCurrentTab] = useState<'staffHome' | 'staffAdd' | 'staffHistory' | 'adminHome' | 'adminEmployees' | 'adminSettings'>('staffHome');
 
+  // 사용자 권한과 탭 불일치 방지
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role === 'admin') {
+        setCurrentTab(prev => (prev.startsWith('admin') ? prev : 'adminHome'));
+      } else {
+        setCurrentTab(prev => (prev.startsWith('staff') ? prev : 'staffHome'));
+      }
+    }
+  }, [currentUser]);
+
   // 5. 날짜 기준 (현재 주간 계산)
   const [currentWeekDate, setCurrentWeekDate] = useState<Date>(new Date('2026-09-09T00:00:00'));
 
-  // 6. 로그인 폼 상태 (아이디/비밀번호 노출 금지 - 빈칸 시작)
+  // 6. 로그인 폼 상태 (기본값: 알바생 로그인 선택, 빈 아이디/비밀번호)
   const [loginRole, setLoginRole] = useState<'staff' | 'admin'>('staff');
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
@@ -705,7 +716,12 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem(USER_SESSION_STORAGE_KEY);
+    try {
+      localStorage.removeItem(USER_SESSION_STORAGE_KEY);
+      sessionStorage.removeItem(USER_SESSION_STORAGE_KEY);
+    } catch (e) {}
+    setLoginRole('staff');
+    setCurrentTab('staffHome');
     setLoginId('');
     setLoginPw('');
     showToast('로그아웃되었습니다.');
@@ -1082,7 +1098,7 @@ export default function App() {
           {/* ========================================================= */}
           {/* 2. 알바생 - 홈 뷰                                         */}
           {/* ========================================================= */}
-          {currentUser?.role === 'staff' && currentTab === 'staffHome' && (
+          {currentUser?.role === 'staff' && (currentTab === 'staffHome' || (currentTab !== 'staffAdd' && currentTab !== 'staffHistory')) && (
             <div className="space-y-4">
               <div>
                 <span className="text-xs font-semibold text-neutral-500">알바생 모바일 홈</span>
@@ -1346,7 +1362,7 @@ export default function App() {
           {/* ========================================================= */}
           {/* 5. 관리자 - 주간 정산 홈                                  */}
           {/* ========================================================= */}
-          {currentUser?.role === 'admin' && currentTab === 'adminHome' && (
+          {currentUser?.role === 'admin' && (currentTab === 'adminHome' || (currentTab !== 'adminEmployees' && currentTab !== 'adminSettings')) && (
             <div className="space-y-4">
               <div>
                 <span className="text-xs font-semibold text-neutral-500">관리자 페이지</span>
