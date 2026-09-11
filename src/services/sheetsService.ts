@@ -630,3 +630,153 @@ export async function saveGasData(
   if (result.status !== 'success') throw new Error(result.message || '저장 실패');
 }
 
+/**
+ * 공개/링크공유 구글 시트에서 Google Visualization API(gviz/tq)를 사용하여
+ * 로그인이나 Apps Script 없이 바로 데이터 읽기
+ */
+export async function fetchPublicSheetData(spreadsheetId: string): Promise<{
+  employees: Employee[];
+  workLogs: WorkLog[];
+  settlements: Settlement[];
+}> {
+  const fetchTabRows = async (sheetName?: string): Promise<any[][]> => {
+    const queryUrl = sheetName
+      ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`
+      : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json`;
+
+    const res = await fetch(queryUrl);
+    if (!res.ok) {
+      if (res.status === 404 || res.status === 403 || res.status === 401) {
+        throw new Error('시트 접근 권한이 필요합니다. 구글 시트의 [공유] 설정에서 [링크가 있는 모든 사용자 - 뷰어 또는 편집자]로 설정해주세요.');
+      }
+      throw new Error(`시트 응답 오류 (${res.status})`);
+    }
+
+    const text = await res.text();
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);/);
+    if (!match) {
+      throw new Error('구글 시트 데이터를 파싱할 수 없습니다. 시트 링크와 공유 설정을 확인해주세요.');
+    }
+
+    const data = JSON.parse(match[1]);
+    if (data.status !== 'ok') {
+      if (data.errors && data.errors.length > 0) {
+        throw new Error(data.errors[0].detailed_message || data.errors[0].message || '시트 조회 실패');
+      }
+      return [];
+    }
+
+    const rows: any[][] = [];
+    if (data.table && data.table.rows) {
+      for (const r of data.table.rows) {
+        if (r && r.c) {
+          rows.push(r.c.map((cell: any) => (cell && cell.v !== undefined && cell.v !== null ? cell.v : '')));
+        }
+      }
+    }
+    return rows;
+  };
+
+  let empRows: any[][] = [];
+  let logRows: any[][] = [];
+  let setRows: any[][] = [];
+
+  // 각 탭별 조회 시도
+  try {
+    empRows = await fetchTabRows(SHEET_NAMES.EMPLOYEES);
+  } catch (e) {
+    // 탭이 없을 수 있음
+  }
+
+  try {
+    logRows = await fetchTabRows(SHEET_NAMES.WORK_LOGS);
+  } catch (e) {
+    // 탭이 없을 수 있음
+  }
+
+  try {
+    setRows = await fetchTabRows(SHEET_NAMES.SETTLEMENTS);
+  } catch (e) {
+    // 탭이 없을 수 있음
+  }
+
+  // 지정 탭이 모두 비어있는 경우 기본(첫 번째) 시트 조회
+  if (empRows.length === 0 && logRows.length === 0 && setRows.length === 0) {
+    const defaultRows = await fetchTabRows();
+    if (defaultRows.length > 0) {
+      const firstRow = defaultRows[0].map(v => String(v).toLowerCase());
+      const isHeader = firstRow.some(h => 
+        h.includes('id') || h.includes('name') || h.includes('date') || 
+        h.includes('time') || h.includes('이름') || h.includes('날짜') || h.includes('시간')
+      );
+      logRows = isHeader ? defaultRows.slice(1) : defaultRows;
+    }
+  }
+
+  const employees: Employee[] = empRows.map(row => ({
+    employeeId: String(row[0] || '').trim(),
+    name: String(row[1] || '').trim(),
+    password: String(row[2] || '1234').trim(),
+    hourlyRate: Number(row[3]) || 12000,
+    active: row[4] === true || String(row[4]).toLowerCase() === 'true' || row[4] === 1,
+    createdAt: String(row[5] || '')
+  })).filter(e => e.employeeId && e.name && e.employeeId !== 'admin');
+
+  const workLogs: WorkLog[] = logRows.map((row, idx) => ({
+    id: String(row[0] || `log_${Date.now()}_${idx}`),
+    employeeId: String(row[1] || ''),
+    employeeName: String(row[2] || ''),
+    workDate: String(row[3] || ''),
+    startTime: String(row[4] || ''),
+    endTime: String(row[5] || ''),
+    minutesWorked: Number(row[6]) || 0,
+    workDescription: String(row[7] || ''),
+    createdAt: String(row[8] || '')
+  })).filter(l => l.employeeId || l.employeeName);
+
+  const settlements: Settlement[] = setRows.map(row => ({
+    settlementId: String(row[0] || ''),
+    employeeId: String(row[1] || ''),
+    weekStart: String(row[2] || ''),
+    weekEnd: String(row[3] || ''),
+    totalMinutes: Number(row[4]) || 0,
+    expectedPay: Number(row[5]) || 0,
+    actualPay: row[6] !== '' && row[6] !== undefined && row[6] !== null ? Number(row[6]) : null,
+    status: (row[7] === 'completed' || row[7] === 'SETTLED' ? 'completed' : 'pending') as 'pending' | 'completed',
+    settledAt: row[8] ? String(row[8]) : null
+  })).filter(s => s.settlementId);
+
+  return { employees, workLogs, settlements };
+}
+
+/**
+ * 구글 시트에 바로 붙여넣을 수 있는 TSV(탭 구분 텍스트) 생성
+ */
+export function formatAsTsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]): string {
+  const line1 = headers.join('\t');
+  const dataLines = rows.map(r => r.map(c => (c !== null && c !== undefined ? String(c).replace(/[\t\r\n]/g, ' ') : '')).join('\t'));
+  return [line1, ...dataLines].join('\n');
+}
+
+/**
+ * CSV 포맷 파일 다운로드 트리거
+ */
+export function downloadCsv(filename: string, headers: string[], rows: (string | number | boolean | null | undefined)[][]): void {
+  const bom = '\uFEFF'; // Excel 한글 깨짐 방지 UTF-8 BOM
+  const csvContent = bom + [
+    headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','),
+    ...rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+  ].join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+
