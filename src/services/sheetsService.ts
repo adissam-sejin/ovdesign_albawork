@@ -13,6 +13,91 @@ export const HEADERS = {
 };
 
 /**
+ * URL 또는 ID 문자열에서 순수 Google Spreadsheet ID만 추출합니다.
+ */
+export function extractSpreadsheetId(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return trimmed.split('/')[0].split('?')[0].split('#')[0].trim();
+}
+
+/**
+ * 스프레드시트에 필수 시트 탭(Employees, WorkLogs, Settlements) 및 헤더가 존재하는지 확인하고
+ * 없으면 자동으로 추가 생성합니다.
+ */
+export async function ensureSheetsInitialized(accessToken: string, spreadsheetId: string): Promise<void> {
+  const meta = await getSpreadsheetMeta(accessToken, spreadsheetId);
+  const existingSheetTitles = ((meta.sheets || []) as any[]).map(s => s.properties?.title);
+
+  const needed = [
+    { title: SHEET_NAMES.EMPLOYEES, headers: HEADERS.EMPLOYEES },
+    { title: SHEET_NAMES.WORK_LOGS, headers: HEADERS.WORK_LOGS },
+    { title: SHEET_NAMES.SETTLEMENTS, headers: HEADERS.SETTLEMENTS }
+  ];
+
+  const sheetsToCreate = needed.filter(s => !existingSheetTitles.includes(s.title));
+
+  if (sheetsToCreate.length > 0) {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        requests: sheetsToCreate.map(s => ({
+          addSheet: {
+            properties: { title: s.title }
+          }
+        }))
+      })
+    });
+    if (!res.ok) {
+      console.warn('Could not auto-create missing sheets:', await res.text());
+    }
+  }
+
+  // 헤더 검사 및 보충
+  const headerUpdates: any[] = [];
+  for (const item of needed) {
+    try {
+      const headerRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(item.title)}!A1:I1`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (headerRes.ok) {
+        const headerData = await headerRes.json();
+        if (!headerData.values || headerData.values.length === 0 || !headerData.values[0] || headerData.values[0].length === 0) {
+          headerUpdates.push({
+            range: `${item.title}!A1:${String.fromCharCode(64 + item.headers.length)}1`,
+            values: [item.headers]
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`Header check failed for ${item.title}:`, e);
+    }
+  }
+
+  if (headerUpdates.length > 0) {
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        valueInputOption: 'USER_ENTERED',
+        data: headerUpdates
+      })
+    });
+  }
+}
+
+/**
  * Google Sheets에 새 스프레드시트를 생성하고 필요한 시트(Employees, WorkLogs, Settlements) 및 헤더를 초기화합니다.
  */
 export async function createSpreadsheet(accessToken: string): Promise<string> {
