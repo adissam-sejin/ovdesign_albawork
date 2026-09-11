@@ -1,6 +1,6 @@
 {
   "name": "알바 주간정산",
-  "description": "Google Sheets 연동 알바 근무기록 및 주간급여 정산 모바일 웹앱",
+  "description": "출퇴근 근무기록부터 주휴수당·주간급여 자동 계산까지! 모바일 간편 기록 및 구글 시트 연동 웹앱",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
