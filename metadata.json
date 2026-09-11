@@ -1,0 +1,7 @@
+{
+  "name": "알바 주간정산",
+  "description": "Google Sheets 연동 알바 근무기록 및 주간급여 정산 모바일 웹앱",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>알바 주간정산</title>
+  <!-- 프리텐다드 폰트 적용 (모바일 한국어 최적 가독성) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <style>
+    :root {
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --success: #059669;
+      --success-light: #ECFDF5;
+      --warning: #D97706;
+      --warning-light: #FFFBEB;
+      --danger: #DC2626;
+      --danger-light: #FEF2F2;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --text-sub: #94A3B8;
+      --border: #E2E8F0;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    }
+
+    body {
+      background-color: #EEF2F6;
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 360px ~ 430px 기준, 최대 480px 모바일 전용 컨테이너 */
+    #app-container {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      background-color: var(--bg);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.02);
+    }
+
+    /* 헤더 스타일 */
+    .app-header {
+      background-color: #FFFFFF;
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .app-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .app-brand .badge {
+      background-color: #EFF6FF;
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: 6px;
+      letter-spacing: -0.2px;
+    }
+
+    .app-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.3px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-pill {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background-color: #F1F5F9;
+      padding: 4px 10px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-text {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+    .btn-text:active {
+      background-color: #F1F5F9;
+    }
+
+    /* 메인 콘텐츠 영역 (하단 탭바 높이 및 세이프 에리어 고려) */
+    .content-area {
+      flex: 1;
+      padding: 18px;
+      padding-bottom: 95px;
+      overflow-y: auto;
+    }
+
+    /* 카드 기본 스타일 */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* 주간 날짜 선택기 (‹ 이전 주   9월 7일 ~ 9월 13일   다음 주 ›) */
+    .week-selector {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+    }
+
+    .week-nav-btn {
+      background: #F1F5F9;
+      border: none;
+      color: var(--text-main);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .week-nav-btn:active {
+      background: #E2E8F0;
+    }
+
+    .week-label {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.3px;
+    }
+
+    /* 하이라이트 지표 카드 */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric-card {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+
+    .metric-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.5px;
+    }
+    .metric-value.primary {
+      color: var(--primary);
+    }
+    .metric-value.success {
+      color: var(--success);
+    }
+
+    /* 정산 상태 뱃지 */
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+    .badge-status.completed {
+      background-color: var(--success-light);
+      color: var(--success);
+      border: 1px solid #A7F3D0;
+    }
+    .badge-status.pending {
+      background-color: var(--warning-light);
+      color: var(--warning);
+      border: 1px solid #FDE68A;
+    }
+
+    /* 폼 입력 요소들 */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 7px;
+    }
+
+    .form-control {
+      width: 100%;
+      height: 48px;
+      padding: 0 14px;
+      background-color: #FFFFFF;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 15px;
+      color: var(--text-main);
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .form-control:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+
+    textarea.form-control {
+      height: auto;
+      min-height: 90px;
+      padding: 12px 14px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+
+    .time-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* 버튼 스타일 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 50px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+    .btn:active {
+      transform: scale(0.985);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #FFFFFF;
+      box-shadow: 0 2px 4px rgba(37,99,235,0.25);
+    }
+    .btn-primary:active:not(:disabled) {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-success {
+      background-color: var(--success);
+      color: #FFFFFF;
+      box-shadow: 0 2px 4px rgba(5,150,105,0.25);
+    }
+    .btn-success:active:not(:disabled) {
+      background-color: #047857;
+    }
+
+    .btn-outline {
+      background-color: #FFFFFF;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+    .btn-outline:active:not(:disabled) {
+      background-color: #F8FAFC;
+    }
+
+    .btn-danger-outline {
+      background-color: #FFFFFF;
+      border: 1px solid #FCA5A5;
+      color: var(--danger);
+    }
+
+    /* 하단 내비게이션 바 (직원: 3개, 관리자: 3개) */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      height: 72px;
+      background-color: #FFFFFF;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 12px;
+      padding-bottom: env(safe-area-inset-bottom, 8px);
+      z-index: 50;
+    }
+
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      height: 100%;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .nav-item.active {
+      color: var(--primary);
+    }
+    .nav-item svg {
+      width: 22px;
+      height: 22px;
+      stroke-width: 2.2;
+    }
+
+    /* 근무 기록 카드 목록 */
+    .log-item {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+
+    .log-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+
+    .log-date {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .log-time-badge {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      background: #F1F5F9;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .log-time-range {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .log-description {
+      font-size: 14px;
+      color: var(--text-main);
+      line-height: 1.45;
+      word-break: break-word;
+      background: #F8FAFC;
+      padding: 10px 12px;
+      border-radius: 8px;
+    }
+
+    .log-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .btn-small {
+      height: 32px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+    }
+
+    /* 토스트 알림 메시지 */
+    #toast {
+      position: fixed;
+      bottom: 84px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background-color: rgba(15, 23, 42, 0.92);
+      color: #FFFFFF;
+      padding: 12px 20px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s ease;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 90%;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* 모달 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 60;
+    }
+    .modal-content {
+      background: #FFFFFF;
+      width: 100%;
+      max-width: 480px;
+      border-radius: 20px 20px 0 0;
+      padding: 24px 20px 32px;
+      box-shadow: 0 -10px 25px rgba(0,0,0,0.1);
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      stroke: var(--text-sub);
+      margin-bottom: 12px;
+    }
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    /* 로딩 인디케이터 */
+    .loading-spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #FFFFFF;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- 상단 공통 헤더 -->
+  <header class="app-header">
+    <div class="app-brand">
+      <span class="badge" id="roleBadge">로그인 필요</span>
+      <h1 class="app-title" id="pageTitle">알바 주간정산</h1>
+    </div>
+    <div class="header-actions">
+      <span class="user-pill hidden" id="userInfoPill">알바생</span>
+      <button class="btn-text hidden" id="btnLogout" onclick="handleLogout()">로그아웃</button>
+    </div>
+  </header>
+
+  <!-- ========================================== -->
+  <!-- 1. 로그인 뷰 (Default View)               -->
+  <!-- ========================================== -->
+  <div id="viewLogin" class="content-area">
+    <div style="text-align: center; margin-top: 30px; margin-bottom: 30px;">
+      <div style="width: 56px; height: 56px; background: #EFF6FF; border-radius: 16px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center;">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <h2 style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">알바 주간정산</h2>
+      <p style="font-size: 14px; color: var(--text-muted); margin-top: 6px;">근무 기록 등록 및 주간 정산 서비스</p>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label" for="loginId">아이디</label>
+        <input type="text" id="loginId" class="form-control" placeholder="아이디를 입력하세요" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="loginPw">비밀번호</label>
+        <input type="password" id="loginPw" class="form-control" placeholder="비밀번호를 입력하세요" autocomplete="current-password">
+      </div>
+      <button id="btnLogin" class="btn btn-primary" onclick="handleLogin()" style="margin-top: 10px;">
+        로그인
+      </button>
+    </div>
+
+    <div style="padding: 12px; background: #F1F5F9; border-radius: 10px; font-size: 12px; color: #64748B; line-height: 1.5;">
+      💡 <b>테스트 계정 안내</b><br>
+      • 알바생: ID <code>staff01</code> / PW <code>1234</code><br>
+      • 관리자: ID <code>admin</code> / PW <code>adi2026</code>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. 알바생 - 홈 뷰 (Staff Home)             -->
+  <!-- ========================================== -->
+  <div id="viewStaffHome" class="content-area hidden">
+    <!-- 상단 인사말 -->
+    <div style="margin-bottom: 16px;">
+      <p style="font-size: 13px; color: var(--text-muted); font-weight: 600;">알바생 대시보드</p>
+      <h2 id="staffGreeting" style="font-size: 21px; font-weight: 800; letter-spacing: -0.5px;">안녕하세요, 회원님</h2>
+    </div>
+
+    <!-- 주간 네비게이터 -->
+    <div class="week-selector">
+      <button class="week-nav-btn" onclick="changeWeek(-1)">‹ 이전 주</button>
+      <span class="week-label" id="staffWeekLabel">로딩 중...</span>
+      <button class="week-nav-btn" onclick="changeWeek(1)">다음 주 ›</button>
+    </div>
+
+    <!-- 이번 주 정산 및 근무 요약 카드 -->
+    <div class="card" style="border-left: 4px solid var(--primary);">
+      <div class="card-title">
+        <span>이번 주 요약</span>
+        <span id="staffSettlementBadge" class="badge-status pending">정산 전</span>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">총 근무시간</div>
+          <div class="metric-value primary" id="staffTotalHours">0시간 0분</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">예상 급여</div>
+          <div class="metric-value" id="staffExpectedPay">0원</div>
+        </div>
+      </div>
+
+      <div style="background: #F8FAFC; border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 12px; color: var(--text-muted); font-weight: 600;">실제 입금액</div>
+          <div style="font-size: 11px; color: var(--text-sub);">관리자 최종 정산 지급액</div>
+        </div>
+        <div style="font-size: 19px; font-weight: 800; color: var(--success);" id="staffActualPay">-</div>
+      </div>
+    </div>
+
+    <!-- 빠른 근무 기록 버튼 -->
+    <button class="btn btn-primary" onclick="switchTab('staffAdd')" style="margin-bottom: 20px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      오늘 근무 기록하기
+    </button>
+
+    <!-- 최근 근무 기록 요약 미리보기 -->
+    <div class="card-title" style="margin-bottom: 8px;">
+      <span>최근 기록된 근무</span>
+      <button class="btn-text" onclick="switchTab('staffHistory')" style="color: var(--primary);">전체보기 ›</button>
+    </div>
+    <div id="staffRecentLogsContainer">
+      <div class="empty-state">
+        <p>근무 기록을 불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. 알바생 - 근무 기록 입력 뷰 (Staff Add)   -->
+  <!-- ========================================== -->
+  <div id="viewStaffAdd" class="content-area hidden">
+    <div style="margin-bottom: 18px;">
+      <h2 style="font-size: 20px; font-weight: 800;">근무 기록하기</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">정확한 근무 시간과 업무 내용을 기록해 주세요.</p>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label" for="inputWorkDate">근무 날짜</label>
+        <input type="date" id="inputWorkDate" class="form-control">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">근무 시간 (시작 ~ 종료)</label>
+        <div class="time-inputs">
+          <div>
+            <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">시작 시간</span>
+            <input type="time" id="inputStartTime" class="form-control" value="09:00">
+          </div>
+          <div>
+            <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 3px;">종료 시간</span>
+            <input type="time" id="inputEndTime" class="form-control" value="18:00">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="inputWorkDesc">한 일 (업무 상세 내용)</label>
+        <textarea id="inputWorkDesc" class="form-control" placeholder="예: 카드뉴스 디자인 수정, 강의자료 PPT 수정, 영상 자막 작업 등"></textarea>
+      </div>
+
+      <!-- 계산 미리보기 배너 -->
+      <div style="background: #EFF6FF; border-radius: 10px; padding: 12px; margin-bottom: 18px; font-size: 13px; color: #1E40AF; display: flex; justify-content: space-between;">
+        <span>계산 시간: <b id="calcTimePreview">9시간 (540분)</b></span>
+        <span>예상: <b id="calcPayPreview">108,000원</b></span>
+      </div>
+
+      <button id="btnSaveLog" class="btn btn-primary" onclick="handleSaveWorkLog()">
+        근무 기록하기
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 4. 알바생 - 내 기록 목록 뷰 (Staff History) -->
+  <!-- ========================================== -->
+  <div id="viewStaffHistory" class="content-area hidden">
+    <div class="week-selector">
+      <button class="week-nav-btn" onclick="changeWeek(-1)">‹ 이전 주</button>
+      <span class="week-label" id="historyWeekLabel">로딩 중...</span>
+      <button class="week-nav-btn" onclick="changeWeek(1)">다음 주 ›</button>
+    </div>
+
+    <div id="staffHistoryContainer">
+      <div class="empty-state">
+        <p>기록을 불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 5. 관리자 - 정산 홈 뷰 (Admin Settlement)   -->
+  <!-- ========================================== -->
+  <div id="viewAdminHome" class="content-area hidden">
+    <div style="margin-bottom: 16px;">
+      <p style="font-size: 13px; color: var(--text-muted); font-weight: 600;">관리자 페이지</p>
+      <h2 style="font-size: 21px; font-weight: 800;">이번 주 정산</h2>
+    </div>
+
+    <!-- 주간 네비게이터 -->
+    <div class="week-selector">
+      <button class="week-nav-btn" onclick="changeWeek(-1)">‹ 이전 주</button>
+      <span class="week-label" id="adminWeekLabel">로딩 중...</span>
+      <button class="week-nav-btn" onclick="changeWeek(1)">다음 주 ›</button>
+    </div>
+
+    <div id="adminStaffCardsContainer">
+      <div class="empty-state">
+        <p>직원 및 정산 정보를 불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 6. 관리자 - 직원 상세 및 정산 모달/뷰       -->
+  <!-- ========================================== -->
+  <div id="modalAdminDetail" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <h3 style="font-size: 18px; font-weight: 800;" id="modalStaffName">직원 상세 및 정산</h3>
+        <button class="btn-text" onclick="closeAdminDetailModal()" style="font-size: 18px;">✕</button>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">이번 주 총 근무시간</div>
+          <div class="metric-value primary" id="modalStaffTotalHours">0시간 0분</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">예상 급여</div>
+          <div class="metric-value" id="modalStaffExpectedPay">0원</div>
+        </div>
+      </div>
+
+      <div class="card-title">근무 기록 목록</div>
+      <div id="modalStaffLogsContainer" style="max-height: 220px; overflow-y: auto; margin-bottom: 16px;">
+        <!-- 개별 근무 기록 카드 -->
+      </div>
+
+      <!-- 정산 처리 카드 -->
+      <div class="card" style="background: #F8FAFC; border: 1.5px solid #CBD5E1;">
+        <div class="card-title">
+          <span>주간 정산 정보 입력</span>
+          <span id="modalSettlementStatus" class="badge-status pending">정산 전</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="modalActualPayInput">실제 입금액 (보너스 포함 실제 지급할 금액)</label>
+          <input type="number" id="modalActualPayInput" class="form-control" placeholder="예: 140000" style="font-size: 18px; font-weight: 700;">
+          <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">
+            ※ 예상 급여와 실제 입금액은 별도로 모두 저장됩니다.
+          </span>
+        </div>
+
+        <button id="btnCompleteSettlement" class="btn btn-success" onclick="handleSaveSettlement()">
+          이번 주 정산 완료
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 7. 관리자 - 직원 관리 뷰 (Admin Employees)   -->
+  <!-- ========================================== -->
+  <div id="viewAdminEmployees" class="content-area hidden">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div>
+        <h2 style="font-size: 20px; font-weight: 800;">직원 관리</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">알바생 계정 및 시급 관리</p>
+      </div>
+      <button class="btn btn-primary" onclick="openAddEmployeeModal()" style="width: auto; height: 38px; padding: 0 14px; font-size: 13px;">
+        + 직원 추가
+      </button>
+    </div>
+
+    <div id="adminEmployeeListContainer">
+      <div class="empty-state"><p>직원 목록을 불러오는 중...</p></div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 8. 관리자 - 설정 뷰 (Admin Settings)        -->
+  <!-- ========================================== -->
+  <div id="viewAdminSettings" class="content-area hidden">
+    <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 16px;">시스템 설정</h2>
+
+    <div class="card">
+      <div class="card-title">관리자 정보</div>
+      <p style="font-size: 14px; margin-bottom: 6px;"><b>관리자 ID:</b> admin</p>
+      <p style="font-size: 13px; color: var(--text-muted);">비밀번호 및 민감 정보는 Google Script Properties에서 안전하게 관리됩니다.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">테스트 데이터 및 시트 관리</div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+        테스트용 직원(staff01 / 1234) 및 시나리오 근무 기록 3건을 생성합니다.
+      </p>
+      <button id="btnSetupSample" class="btn btn-outline" onclick="handleSetupSampleData()">
+        샘플 테스트 데이터 생성
+      </button>
+    </div>
+  </div>
+
+  <!-- 하단 고정 내비게이션 바 -->
+  <nav class="bottom-nav hidden" id="bottomNav">
+    <!-- 자바스크립트로 역할에 맞게 동적 렌더링 -->
+  </nav>
+
+  <!-- 토스트 알림창 -->
+  <div id="toast">알림 메시지</div>
+</div>
+
+<!-- ========================================== -->
+<!-- 클라이언트 JavaScript 로직                  -->
+<!-- ========================================== -->
+<script>
+  // 상태 관리 객체
+  var state = {
+    currentUser: null, // { role: 'admin' | 'staff', id, name, hourlyRate }
+    currentWeekStart: null, // 'YYYY-MM-DD'
+    currentWeekEnd: null,
+    currentTab: 'home',
+    cachedWeeklySummary: null,
+    cachedLogs: [],
+    selectedAdminEmployeeId: null,
+    cachedEmployees: []
+  };
+
+  // 초기화
+  window.addEventListener('DOMContentLoaded', function() {
+    initWeekDates(new Date());
+    setupEventListeners();
+    
+    // 로컬 스토리지에 로그인 세션이 남아있다면 복원
+    var savedSession = localStorage.getItem('alba_session');
+    if (savedSession) {
+      try {
+        state.currentUser = JSON.parse(savedSession);
+        onLoginSuccess(state.currentUser);
+      } catch (e) {
+        localStorage.removeItem('alba_session');
+      }
+    }
+  });
+
+  function setupEventListeners() {
+    var dateInput = document.getElementById('inputWorkDate');
+    if (dateInput) {
+      dateInput.value = formatDateForInput(new Date());
+    }
+
+    var startInput = document.getElementById('inputStartTime');
+    var endInput = document.getElementById('inputEndTime');
+    if (startInput && endInput) {
+      startInput.addEventListener('change', updateCalcPreview);
+      endInput.addEventListener('change', updateCalcPreview);
+      updateCalcPreview();
+    }
+  }
+
+  // 14. 주간 날짜 계산 (월요일 ~ 일요일 기준)
+  function initWeekDates(targetDate) {
+    var d = new Date(targetDate);
+    var day = d.getDay(); // 0 (일) ~ 6 (토)
+    var diffToMon = (day === 0 ? -6 : 1 - day);
+    
+    var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMon);
+    var sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    
+    state.currentWeekStart = formatDateForInput(mon);
+    state.currentWeekEnd = formatDateForInput(sun);
+    
+    updateWeekDisplayLabels();
+  }
+
+  function changeWeek(deltaWeeks) {
+    var parts = state.currentWeekStart.split('-');
+    var mon = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    mon.setDate(mon.getDate() + (deltaWeeks * 7));
+    
+    initWeekDates(mon);
+    refreshCurrentViewData();
+  }
+
+  function updateWeekDisplayLabels() {
+    var label = formatWeekRangeString(state.currentWeekStart, state.currentWeekEnd);
+    var staffLabel = document.getElementById('staffWeekLabel');
+    var histLabel = document.getElementById('historyWeekLabel');
+    var adminLabel = document.getElementById('adminWeekLabel');
+    
+    if (staffLabel) staffLabel.innerText = label;
+    if (histLabel) histLabel.innerText = label;
+    if (adminLabel) adminLabel.innerText = label;
+  }
+
+  // 9. 로그인 처리
+  function handleLogin() {
+    var idInput = document.getElementById('loginId');
+    var pwInput = document.getElementById('loginPw');
+    var btn = document.getElementById('btnLogin');
+    
+    var id = idInput.value.trim();
+    var pw = pwInput.value.trim();
+    
+    if (!id || !pw) {
+      showToast('아이디와 비밀번호를 입력해 주세요.');
+      return;
+    }
+    
+    setButtonLoading(btn, true, '로그인 중...');
+    
+    callServer('loginUser', [id, pw], function(res) {
+      setButtonLoading(btn, false, '로그인');
+      if (res && res.success) {
+        state.currentUser = res.user;
+        localStorage.setItem('alba_session', JSON.stringify(res.user));
+        showToast(res.user.name + '님 환영합니다.');
+        onLoginSuccess(res.user);
+      } else {
+        showToast(res ? res.message : '아이디 또는 비밀번호가 올바르지 않습니다.');
+      }
+    }, function(err) {
+      setButtonLoading(btn, false, '로그인');
+      showToast('로그인 처리 중 오류가 발생했습니다.');
+    });
+  }
+
+  function onLoginSuccess(user) {
+    document.getElementById('viewLogin').classList.add('hidden');
+    document.getElementById('userInfoPill').classList.remove('hidden');
+    document.getElementById('userInfoPill').innerText = user.name + ' (' + (user.role === 'admin' ? '관리자' : '직원') + ')';
+    document.getElementById('btnLogout').classList.remove('hidden');
+    document.getElementById('bottomNav').classList.remove('hidden');
+    
+    var badge = document.getElementById('roleBadge');
+    badge.innerText = user.role === 'admin' ? '관리자' : '직원';
+    badge.style.background = user.role === 'admin' ? '#FEF2F2' : '#EFF6FF';
+    badge.style.color = user.role === 'admin' ? '#DC2626' : '#2563EB';
+    
+    renderBottomNav(user.role);
+    
+    if (user.role === 'admin') {
+      switchTab('adminHome');
+    } else {
+      document.getElementById('staffGreeting').innerText = '안녕하세요, ' + user.name + '님';
+      switchTab('staffHome');
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('alba_session');
+    state.currentUser = null;
+    
+    document.getElementById('userInfoPill').classList.add('hidden');
+    document.getElementById('btnLogout').classList.add('hidden');
+    document.getElementById('bottomNav').classList.add('hidden');
+    document.getElementById('roleBadge').innerText = '로그인 필요';
+    document.getElementById('roleBadge').style.background = '#EFF6FF';
+    document.getElementById('roleBadge').style.color = '#2563EB';
+    
+    hideAllViews();
+    document.getElementById('viewLogin').classList.remove('hidden');
+    document.getElementById('loginPw').value = '';
+    showToast('로그아웃되었습니다.');
+  }
+
+  // 내비게이션 바 렌더링
+  function renderBottomNav(role) {
+    var nav = document.getElementById('bottomNav');
+    if (role === 'admin') {
+      nav.innerHTML = `
+        <button class="nav-item active" id="tab-adminHome" onclick="switchTab('adminHome')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span>정산</span>
+        </button>
+        <button class="nav-item" id="tab-adminEmployees" onclick="switchTab('adminEmployees')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>직원</span>
+        </button>
+        <button class="nav-item" id="tab-adminSettings" onclick="switchTab('adminSettings')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>설정</span>
+        </button>
+      `;
+    } else {
+      nav.innerHTML = `
+        <button class="nav-item active" id="tab-staffHome" onclick="switchTab('staffHome')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>홈</span>
+        </button>
+        <button class="nav-item" id="tab-staffAdd" onclick="switchTab('staffAdd')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <span>근무 기록</span>
+        </button>
+        <button class="nav-item" id="tab-staffHistory" onclick="switchTab('staffHistory')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span>내 기록</span>
+        </button>
+      `;
+    }
+  }
+
+  function hideAllViews() {
+    var views = [
+      'viewLogin', 'viewStaffHome', 'viewStaffAdd', 'viewStaffHistory',
+      'viewAdminHome', 'viewAdminEmployees', 'viewAdminSettings'
+    ];
+    views.forEach(function(v) {
+      var el = document.getElementById(v);
+      if (el) el.classList.add('hidden');
+    });
+  }
+
+  function switchTab(tabId) {
+    state.currentTab = tabId;
+    hideAllViews();
+    
+    // 탭바 활성화 표시
+    var items = document.querySelectorAll('.nav-item');
+    items.forEach(function(el) { el.classList.remove('active'); });
+    var currentNav = document.getElementById('tab-' + tabId);
+    if (currentNav) currentNav.classList.add('active');
+
+    // 뷰 표시
+    if (tabId === 'staffHome') {
+      document.getElementById('viewStaffHome').classList.remove('hidden');
+      loadStaffSummary();
+    } else if (tabId === 'staffAdd') {
+      document.getElementById('viewStaffAdd').classList.remove('hidden');
+    } else if (tabId === 'staffHistory') {
+      document.getElementById('viewStaffHistory').classList.remove('hidden');
+      loadStaffHistory();
+    } else if (tabId === 'adminHome') {
+      document.getElementById('viewAdminHome').classList.remove('hidden');
+      loadAdminSettlementHome();
+    } else if (tabId === 'adminEmployees') {
+      document.getElementById('viewAdminEmployees').classList.remove('hidden');
+      loadAdminEmployees();
+    } else if (tabId === 'adminSettings') {
+      document.getElementById('viewAdminSettings').classList.remove('hidden');
+    }
+  }
+
+  function refreshCurrentViewData() {
+    if (state.currentTab === 'staffHome') loadStaffSummary();
+    else if (state.currentTab === 'staffHistory') loadStaffHistory();
+    else if (state.currentTab === 'adminHome') loadAdminSettlementHome();
+  }
+
+  // ==========================================
+  // 알바생 데이터 로드 및 렌더링
+  // ==========================================
+  function loadStaffSummary() {
+    if (!state.currentUser) return;
+    
+    callServer('getWeeklySummary', [state.currentUser.id, state.currentWeekStart], function(res) {
+      if (res && res.success) {
+        state.cachedWeeklySummary = res;
+        
+        // 1. 총 근무시간 표시 (예: "10시간 30분")
+        document.getElementById('staffTotalHours').innerText = formatMinutesToHours(res.totalMinutes);
+        // 2. 예상 급여 표시 (예: "126,000원")
+        document.getElementById('staffExpectedPay').innerText = formatCurrency(res.expectedPay);
+        
+        // 3. 실제 입금액 및 정산 상태 표시
+        var st = res.settlement;
+        var badge = document.getElementById('staffSettlementBadge');
+        var actualPayEl = document.getElementById('staffActualPay');
+        
+        if (st && st.status === 'completed') {
+          badge.className = 'badge-status completed';
+          badge.innerText = '정산 완료';
+          actualPayEl.innerText = formatCurrency(st.actualPay);
+        } else {
+          badge.className = 'badge-status pending';
+          badge.innerText = '정산 전';
+          actualPayEl.innerText = '-';
+        }
+      }
+    });
+
+    // 최근 기록 미리보기 로드
+    callServer('getWeeklyWorkLogs', [state.currentUser.id, state.currentWeekStart], function(res) {
+      var container = document.getElementById('staffRecentLogsContainer');
+      if (res && res.success && res.logs && res.logs.length > 0) {
+        state.cachedLogs = res.logs;
+        container.innerHTML = renderLogCardsHtml(res.logs.slice(-3).reverse(), false);
+      } else {
+        container.innerHTML = `
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p style="font-weight: 700;">이번 주에 아직 등록된 근무가 없습니다.</p>
+            <p style="font-size: 13px;">오늘 근무한 내용을 기록해 주세요.</p>
+          </div>
+        `;
+      }
+    });
+  }
+
+  function loadStaffHistory() {
+    if (!state.currentUser) return;
+    var container = document.getElementById('staffHistoryContainer');
+    container.innerHTML = '<div class="empty-state"><p>근무 기록을 불러오는 중...</p></div>';
+
+    callServer('getWeeklyWorkLogs', [state.currentUser.id, state.currentWeekStart], function(res) {
+      if (res && res.success) {
+        state.cachedLogs = res.logs;
+        if (res.logs.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <p style="font-weight: 700;">등록된 근무 기록이 없습니다.</p>
+              <p style="font-size: 13px;">해당 주차의 근무 내역이 없습니다.</p>
+            </div>
+          `;
+        } else {
+          // 정산 여부 확인
+          var isSettled = state.cachedWeeklySummary && state.cachedWeeklySummary.settlement && state.cachedWeeklySummary.settlement.status === 'completed';
+          container.innerHTML = renderLogCardsHtml(res.logs, !isSettled);
+        }
+      } else {
+        container.innerHTML = '<div class="empty-state"><p>기록을 불러오지 못했습니다. 다시 시도해 주세요.</p></div>';
+      }
+    });
+  }
+
+  // 15. 근무 기록 카드 렌더링 함수
+  function renderLogCardsHtml(logs, allowEdit) {
+    return logs.map(function(log) {
+      var dateObj = new Date(log.workDate + 'T00:00:00');
+      var dayName = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'][dateObj.getDay()];
+      var monthDay = (dateObj.getMonth() + 1) + '월 ' + dateObj.getDate() + '일 ' + dayName;
+      
+      var deleteButton = allowEdit ? `
+        <div class="log-actions">
+          <button class="btn-text btn-small" style="color: var(--danger);" onclick="handleDeleteLog('${log.id}')">삭제</button>
+        </div>
+      ` : `
+        <div class="log-actions">
+          <span style="font-size: 11px; color: var(--text-sub);">정산 완료(수정 불가)</span>
+        </div>
+      `;
+
+      return `
+        <div class="log-item">
+          <div class="log-item-header">
+            <span class="log-date">${monthDay}</span>
+            <span class="log-time-badge">${formatMinutesToHours(log.minutesWorked)}</span>
+          </div>
+          <div class="log-time-range">${log.startTime} ~ ${log.endTime}</div>
+          <div class="log-description">${escapeHtml(log.workDescription)}</div>
+          ${deleteButton}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 11. 근무 기록 저장
+  function handleSaveWorkLog() {
+    var dateInput = document.getElementById('inputWorkDate');
+    var startInput = document.getElementById('inputStartTime');
+    var endInput = document.getElementById('inputEndTime');
+    var descInput = document.getElementById('inputWorkDesc');
+    var btn = document.getElementById('btnSaveLog');
+    
+    var workDate = dateInput.value;
+    var startTime = startInput.value;
+    var endTime = endInput.value;
+    var workDesc = descInput.value.trim();
+    
+    // 24. 입력 검증
+    if (!workDate) {
+      showToast('근무 날짜를 선택해 주세요.');
+      return;
+    }
+    if (!startTime || !endTime) {
+      showToast('시작 시간과 종료 시간을 모두 선택해 주세요.');
+      return;
+    }
+    if (startTime >= endTime) {
+      showToast('종료 시간을 시작 시간보다 늦게 설정해 주세요.');
+      return;
+    }
+    if (!workDesc) {
+      showToast('한 일을 입력해 주세요.');
+      return;
+    }
+    
+    // 25. 중복 저장 방지 (버튼 비활성화 및 텍스트 변경)
+    setButtonLoading(btn, true, '저장 중...');
+    
+    var payload = {
+      employeeId: state.currentUser.id,
+      employeeName: state.currentUser.name,
+      workDate: workDate,
+      startTime: startTime,
+      endTime: endTime,
+      workDescription: workDesc,
+      role: state.currentUser.role
+    };
+    
+    callServer('addWorkLog', [payload], function(res) {
+      setButtonLoading(btn, false, '근무 기록하기');
+      if (res && res.success) {
+        showToast('근무 기록이 저장되었습니다.');
+        descInput.value = '';
+        // 해당 주로 주간 시작일 맞추기
+        initWeekDates(workDate);
+        switchTab('staffHome');
+      } else {
+        showToast(res ? res.message : '저장에 실패했습니다.');
+      }
+    }, function(err) {
+      setButtonLoading(btn, false, '근무 기록하기');
+      showToast('저장 중 오류가 발생했습니다.');
+    });
+  }
+
+  function handleDeleteLog(logId) {
+    if (!confirm('이 근무 기록을 삭제하시겠습니까?')) return;
+    
+    callServer('deleteWorkLog', [logId, state.currentUser.id, state.currentUser.role], function(res) {
+      if (res && res.success) {
+        showToast('근무 기록이 삭제되었습니다.');
+        loadStaffHistory();
+      } else {
+        showToast(res ? res.message : '삭제에 실패했습니다.');
+      }
+    });
+  }
+
+  function updateCalcPreview() {
+    var start = document.getElementById('inputStartTime').value;
+    var end = document.getElementById('inputEndTime').value;
+    var previewEl = document.getElementById('calcTimePreview');
+    var payEl = document.getElementById('calcPayPreview');
+    
+    if (start && end && start < end) {
+      var s = start.split(':').map(Number);
+      var e = end.split(':').map(Number);
+      var min = (e[0]*60 + e[1]) - (s[0]*60 + s[1]);
+      previewEl.innerText = formatMinutesToHours(min) + ' (' + min + '분)';
+      var rate = state.currentUser ? (state.currentUser.hourlyRate || 12000) : 12000;
+      var pay = Math.round((min / 60) * rate);
+      payEl.innerText = formatCurrency(pay);
+    } else {
+      previewEl.innerText = '-';
+      payEl.innerText = '-';
+    }
+  }
+
+  // ==========================================
+  // 관리자 정산 화면
+  // ==========================================
+  function loadAdminSettlementHome() {
+    var container = document.getElementById('adminStaffCardsContainer');
+    container.innerHTML = '<div class="empty-state"><p>직원 및 정산 정보를 불러오는 중...</p></div>';
+
+    callServer('getEmployeesWithWeeklySummary', [state.currentWeekStart], function(res) {
+      if (res && res.success) {
+        state.cachedEmployees = res.employees;
+        if (!res.employees || res.employees.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <p>등록된 직원이 없습니다.</p>
+              <button class="btn btn-outline" onclick="handleSetupSampleData()" style="margin-top: 10px;">샘플 직원 생성</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = res.employees.map(function(emp) {
+          var isSettled = emp.settlement && emp.settlement.status === 'completed';
+          var badgeHtml = isSettled 
+            ? '<span class="badge-status completed">정산 완료</span>' 
+            : '<span class="badge-status pending">정산 전</span>';
+
+          return `
+            <div class="card" style="cursor: pointer;" onclick="openAdminDetailModal('${emp.employeeId}')">
+              <div class="card-title">
+                <span style="font-size: 16px; font-weight: 700; color: var(--text-main);">${emp.name} (${emp.employeeId})</span>
+                ${badgeHtml}
+              </div>
+              <div class="metric-grid" style="margin-bottom: 8px;">
+                <div class="metric-card">
+                  <div class="metric-label">총 근무시간</div>
+                  <div class="metric-value primary" style="font-size: 17px;">${formatMinutesToHours(emp.totalMinutes)}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">예상 급여</div>
+                  <div class="metric-value" style="font-size: 17px;">${formatCurrency(emp.expectedPay)}</div>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid #F1F5F9; font-size: 13px;">
+                <span style="color: var(--text-muted);">실제 지급액: <b style="color: var(--success);">${isSettled ? formatCurrency(emp.settlement.actualPay) : '-'}</b></span>
+                <span style="color: var(--primary); font-weight: 700;">상세/정산하기 ›</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        container.innerHTML = '<div class="empty-state"><p>데이터를 불러오지 못했습니다. 다시 시도해 주세요.</p></div>';
+      }
+    });
+  }
+
+  // 17 & 18. 관리자 직원 상세 및 정산 모달
+  function openAdminDetailModal(empId) {
+    state.selectedAdminEmployeeId = empId;
+    var emp = state.cachedEmployees.find(function(e) { return e.employeeId === empId; });
+    if (!emp) return;
+
+    document.getElementById('modalStaffName').innerText = emp.name + ' (' + emp.employeeId + ') 님 주간 정산';
+    document.getElementById('modalStaffTotalHours').innerText = formatMinutesToHours(emp.totalMinutes);
+    document.getElementById('modalStaffExpectedPay').innerText = formatCurrency(emp.expectedPay);
+    
+    var isSettled = emp.settlement && emp.settlement.status === 'completed';
+    var statusBadge = document.getElementById('modalSettlementStatus');
+    var inputActualPay = document.getElementById('modalActualPayInput');
+    
+    if (isSettled) {
+      statusBadge.className = 'badge-status completed';
+      statusBadge.innerText = '정산 완료';
+      inputActualPay.value = emp.settlement.actualPay;
+    } else {
+      statusBadge.className = 'badge-status pending';
+      statusBadge.innerText = '정산 전';
+      inputActualPay.value = emp.expectedPay; // 기본 추천값으로 예상 급여 자동 기입
+    }
+
+    // 근무 기록 상세 목록 불러오기
+    var logsContainer = document.getElementById('modalStaffLogsContainer');
+    logsContainer.innerHTML = '<p style="font-size: 13px; color: var(--text-muted);">근무 기록을 불러오는 중...</p>';
+    
+    callServer('getWeeklyWorkLogs', [empId, state.currentWeekStart], function(res) {
+      if (res && res.success && res.logs && res.logs.length > 0) {
+        logsContainer.innerHTML = renderLogCardsHtml(res.logs, true);
+      } else {
+        logsContainer.innerHTML = '<p style="font-size: 13px; color: var(--text-muted); text-align: center; padding: 20px 0;">근무 기록이 없습니다.</p>';
+      }
+    });
+
+    document.getElementById('modalAdminDetail').classList.remove('hidden');
+  }
+
+  function closeAdminDetailModal() {
+    document.getElementById('modalAdminDetail').classList.add('hidden');
+    state.selectedAdminEmployeeId = null;
+  }
+
+  // 19 & 20. 관리자 주간 정산 완료 저장
+  function handleSaveSettlement() {
+    if (!state.selectedAdminEmployeeId) return;
+    var emp = state.cachedEmployees.find(function(e) { return e.employeeId === state.selectedAdminEmployeeId; });
+    if (!emp) return;
+
+    var actualPayVal = document.getElementById('modalActualPayInput').value;
+    if (actualPayVal === '' || isNaN(Number(actualPayVal)) || Number(actualPayVal) < 0) {
+      showToast('실제 입금액을 올바른 숫자로 입력해 주세요.');
+      return;
+    }
+
+    var btn = document.getElementById('btnCompleteSettlement');
+    setButtonLoading(btn, true, '정산 처리 중...');
+
+    var payload = {
+      employeeId: emp.employeeId,
+      weekStart: state.currentWeekStart,
+      weekEnd: state.currentWeekEnd,
+      totalMinutes: emp.totalMinutes,
+      expectedPay: emp.expectedPay,
+      actualPay: Number(actualPayVal)
+    };
+
+    callServer('saveSettlement', [payload], function(res) {
+      setButtonLoading(btn, false, '이번 주 정산 완료');
+      if (res && res.success) {
+        showToast('정산이 완료되었습니다.');
+        closeAdminDetailModal();
+        loadAdminSettlementHome();
+      } else {
+        showToast(res ? res.message : '정산 처리에 실패했습니다.');
+      }
+    }, function(err) {
+      setButtonLoading(btn, false, '이번 주 정산 완료');
+      showToast('정산 처리 중 오류가 발생했습니다.');
+    });
+  }
+
+  // ==========================================
+  // 관리자 직원 관리 화면
+  // ==========================================
+  function loadAdminEmployees() {
+    var container = document.getElementById('adminEmployeeListContainer');
+    container.innerHTML = '<div class="empty-state"><p>직원 목록을 불러오는 중...</p></div>';
+
+    callServer('getEmployeesWithWeeklySummary', [state.currentWeekStart], function(res) {
+      if (res && res.success) {
+        if (!res.employees || res.employees.length === 0) {
+          container.innerHTML = '<div class="empty-state"><p>등록된 직원이 없습니다.</p></div>';
+          return;
+        }
+
+        container.innerHTML = res.employees.map(function(emp) {
+          var activeBadge = emp.active 
+            ? '<span class="badge-status completed" style="font-size: 11px;">재직중</span>' 
+            : '<span class="badge-status" style="background:#F1F5F9; color:#64748B; font-size: 11px;">비활성</span>';
+
+          return `
+            <div class="card" style="margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div>
+                  <span style="font-size: 16px; font-weight: 700;">${emp.name}</span>
+                  <span style="font-size: 12px; color: var(--text-muted); margin-left: 6px;">ID: ${emp.employeeId}</span>
+                </div>
+                ${activeBadge}
+              </div>
+              <div style="font-size: 13px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
+                <span>시급: <b>${formatCurrency(emp.hourlyRate)}</b></span>
+                <button class="btn-text btn-small" onclick="toggleEmployeeActive('${emp.employeeId}', ${!emp.active})">
+                  ${emp.active ? '비활성화' : '활성화'}
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    });
+  }
+
+  function openAddEmployeeModal() {
+    var name = prompt('추가할 직원의 이름을 입력하세요:');
+    if (!name) return;
+    var empId = prompt('직원 ID를 입력하세요 (영문/숫자):');
+    if (!empId) return;
+    var pw = prompt('초기 비밀번호를 입력하세요:');
+    if (!pw) return;
+
+    callServer('addEmployee', [{
+      name: name,
+      employeeId: empId,
+      password: pw,
+      hourlyRate: 12000
+    }], function(res) {
+      if (res && res.success) {
+        showToast(res.message);
+        loadAdminEmployees();
+      } else {
+        showToast(res ? res.message : '직원 추가에 실패했습니다.');
+      }
+    });
+  }
+
+  function toggleEmployeeActive(empId, nextState) {
+    callServer('updateEmployee', [{ employeeId: empId, active: nextState }], function(res) {
+      if (res && res.success) {
+        showToast('직원 상태가 변경되었습니다.');
+        loadAdminEmployees();
+      } else {
+        showToast('변경에 실패했습니다.');
+      }
+    });
+  }
+
+  function handleSetupSampleData() {
+    var btn = document.getElementById('btnSetupSample');
+    if (btn) setButtonLoading(btn, true, '샘플 데이터 생성 중...');
+    
+    callServer('setupSampleData', [], function(res) {
+      if (btn) setButtonLoading(btn, false, '샘플 테스트 데이터 생성');
+      if (res && res.success) {
+        showToast(res.message);
+      } else {
+        showToast('샘플 데이터 생성 실패: ' + (res ? res.message : ''));
+      }
+    }, function(err) {
+      if (btn) setButtonLoading(btn, false, '샘플 테스트 데이터 생성');
+      showToast('샘플 생성 중 오류가 발생했습니다.');
+    });
+  }
+
+  // ==========================================
+  // 유틸리티 및 통신 함수
+  // ==========================================
+
+  /**
+   * Google Apps Script 통신 래퍼 (google.script.run)
+   * 일반 브라우저 환경에서도 목업 상태로 동작하도록 안전하게 폴백 지원
+   */
+  function callServer(functionName, args, onSuccess, onFailure) {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      var runner = google.script.run
+        .withSuccessHandler(function(response) {
+          if (onSuccess) onSuccess(response);
+        })
+        .withFailureHandler(function(err) {
+          console.error('[AppsScript Error]', err);
+          if (onFailure) onFailure(err);
+          else showToast('데이터를 불러오지 못했습니다. 다시 시도해 주세요.');
+        });
+      
+      runner[functionName].apply(runner, args);
+    } else {
+      // 로컬 테스트 및 프리뷰 환경을 위한 클라이언트 목업 데이터 시뮬레이터
+      simulateLocalServer(functionName, args, onSuccess, onFailure);
+    }
+  }
+
+  // 로컬 프리뷰용 가상 서버 (AI Studio 미리보기 등 google.script.run 부재 시 자동 작동)
+  function simulateLocalServer(funcName, args, onSuccess, onFailure) {
+    setTimeout(function() {
+      var mockEmployees = JSON.parse(localStorage.getItem('mock_employees') || '[]');
+      var mockLogs = JSON.parse(localStorage.getItem('mock_logs') || '[]');
+      var mockSettlements = JSON.parse(localStorage.getItem('mock_settlements') || '[]');
+
+      // 초기 샘플 직원이 없으면 자동 생성
+      if (mockEmployees.length === 0) {
+        mockEmployees.push({
+          employeeId: 'staff01',
+          name: '알바생1',
+          password: '1234',
+          hourlyRate: 12000,
+          active: true,
+          createdAt: '2026-09-09 10:00:00'
+        });
+        localStorage.setItem('mock_employees', JSON.stringify(mockEmployees));
+      }
+
+      if (funcName === 'loginUser') {
+        var id = args[0], pw = args[1];
+        if (id === 'admin' && pw === 'adi2026') {
+          onSuccess({ success: true, user: { role: 'admin', id: 'admin', name: '관리자', hourlyRate: 0 } });
+        } else {
+          var emp = mockEmployees.find(function(e) { return e.employeeId === id && e.password === pw; });
+          if (emp) {
+            onSuccess({ success: true, user: { role: 'staff', id: emp.employeeId, name: emp.name, hourlyRate: emp.hourlyRate } });
+          } else {
+            onSuccess({ success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다.' });
+          }
+        }
+      } else if (funcName === 'getWeeklyWorkLogs') {
+        var eId = args[0], wStart = args[1];
+        var filtered = mockLogs.filter(function(l) {
+          return (!eId || l.employeeId === eId);
+        });
+        onSuccess({ success: true, logs: filtered, weekStart: state.currentWeekStart, weekEnd: state.currentWeekEnd });
+      } else if (funcName === 'getWeeklySummary') {
+        var eId = args[0];
+        var logs = mockLogs.filter(function(l) { return l.employeeId === eId; });
+        var totalMin = 0;
+        logs.forEach(function(l) { totalMin += Number(l.minutesWorked) || 0; });
+        var emp = mockEmployees.find(function(e) { return e.employeeId === eId; }) || { hourlyRate: 12000 };
+        var expPay = Math.round((totalMin / 60) * emp.hourlyRate);
+        var settle = mockSettlements.find(function(s) { return s.employeeId === eId && s.weekStart === state.currentWeekStart; });
+        
+        onSuccess({
+          success: true,
+          employeeId: eId,
+          weekStart: state.currentWeekStart,
+          weekEnd: state.currentWeekEnd,
+          totalMinutes: totalMin,
+          expectedPay: expPay,
+          hourlyRate: emp.hourlyRate,
+          settlement: settle || { status: 'pending', actualPay: null }
+        });
+      } else if (funcName === 'addWorkLog') {
+        var data = args[0];
+        var sParts = data.startTime.split(':').map(Number);
+        var eParts = data.endTime.split(':').map(Number);
+        var minWorked = (eParts[0]*60 + eParts[1]) - (sParts[0]*60 + sParts[1]);
+        var newLog = {
+          id: 'LOG_' + new Date().getTime(),
+          employeeId: data.employeeId,
+          employeeName: data.employeeName,
+          workDate: data.workDate,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          minutesWorked: minWorked,
+          workDescription: data.workDescription,
+          createdAt: new Date().toISOString()
+        };
+        mockLogs.push(newLog);
+        localStorage.setItem('mock_logs', JSON.stringify(mockLogs));
+        onSuccess({ success: true, message: '근무 기록이 저장되었습니다.', logId: newLog.id });
+      } else if (funcName === 'deleteWorkLog') {
+        var logId = args[0];
+        mockLogs = mockLogs.filter(function(l) { return l.id !== logId; });
+        localStorage.setItem('mock_logs', JSON.stringify(mockLogs));
+        onSuccess({ success: true, message: '근무 기록이 삭제되었습니다.' });
+      } else if (funcName === 'saveSettlement') {
+        var sData = args[0];
+        var existingIdx = mockSettlements.findIndex(function(s) { return s.employeeId === sData.employeeId && s.weekStart === sData.weekStart; });
+        var sItem = {
+          settlementId: 'SETTLE_' + new Date().getTime(),
+          employeeId: sData.employeeId,
+          weekStart: sData.weekStart,
+          weekEnd: sData.weekEnd,
+          totalMinutes: sData.totalMinutes,
+          expectedPay: sData.expectedPay,
+          actualPay: sData.actualPay,
+          status: 'completed',
+          settledAt: new Date().toISOString()
+        };
+        if (existingIdx >= 0) mockSettlements[existingIdx] = sItem;
+        else mockSettlements.push(sItem);
+        localStorage.setItem('mock_settlements', JSON.stringify(mockSettlements));
+        onSuccess({ success: true, message: '정산이 완료되었습니다.' });
+      } else if (funcName === 'getEmployeesWithWeeklySummary') {
+        var list = mockEmployees.map(function(emp) {
+          var logs = mockLogs.filter(function(l) { return l.employeeId === emp.employeeId; });
+          var totalMin = 0;
+          logs.forEach(function(l) { totalMin += Number(l.minutesWorked) || 0; });
+          var expPay = Math.round((totalMin / 60) * emp.hourlyRate);
+          var settle = mockSettlements.find(function(s) { return s.employeeId === emp.employeeId && s.weekStart === state.currentWeekStart; });
+          return {
+            employeeId: emp.employeeId,
+            name: emp.name,
+            hourlyRate: emp.hourlyRate,
+            active: emp.active,
+            totalMinutes: totalMin,
+            expectedPay: expPay,
+            settlement: settle || { status: 'pending', actualPay: null }
+          };
+        });
+        onSuccess({ success: true, employees: list, weekStart: state.currentWeekStart, weekEnd: state.currentWeekEnd });
+      } else if (funcName === 'setupSampleData') {
+        var sampleLogs = [
+          { id: 'LOG_1', employeeId: 'staff01', employeeName: '알바생1', workDate: state.currentWeekStart, startTime: '10:00', endTime: '12:30', minutesWorked: 150, workDescription: '강의자료 PPT 수정' },
+          { id: 'LOG_2', employeeId: 'staff01', employeeName: '알바생1', workDate: state.currentWeekStart, startTime: '14:00', endTime: '17:00', minutesWorked: 180, workDescription: '카드뉴스 제작' }
+        ];
+        localStorage.setItem('mock_logs', JSON.stringify(sampleLogs));
+        onSuccess({ success: true, message: '샘플 직원(staff01 / 1234) 및 근무 기록이 생성되었습니다.' });
+      } else if (funcName === 'addEmployee') {
+        var newEmp = args[0];
+        mockEmployees.push({
+          employeeId: newEmp.employeeId,
+          name: newEmp.name,
+          password: newEmp.password,
+          hourlyRate: newEmp.hourlyRate || 12000,
+          active: true,
+          createdAt: new Date().toISOString()
+        });
+        localStorage.setItem('mock_employees', JSON.stringify(mockEmployees));
+        onSuccess({ success: true, message: newEmp.name + ' 직원이 추가되었습니다.' });
+      } else if (funcName === 'updateEmployee') {
+        var uEmp = args[0];
+        var target = mockEmployees.find(function(e) { return e.employeeId === uEmp.employeeId; });
+        if (target) {
+          if (uEmp.active !== undefined) target.active = uEmp.active;
+          if (uEmp.hourlyRate !== undefined) target.hourlyRate = uEmp.hourlyRate;
+          localStorage.setItem('mock_employees', JSON.stringify(mockEmployees));
+          onSuccess({ success: true, message: '직원 정보가 업데이트되었습니다.' });
+        } else {
+          onSuccess({ success: false, message: '직원을 찾을 수 없습니다.' });
+        }
+      } else {
+        onSuccess({ success: true });
+      }
+    }, 200);
+  }
+
+  function setButtonLoading(btn, isLoading, text) {
+    if (!btn) return;
+    btn.disabled = isLoading;
+    if (isLoading) {
+      btn.innerHTML = '<span class="loading-spinner"></span>' + text;
+    } else {
+      btn.innerHTML = text;
+    }
+  }
+
+  function showToast(message) {
+    var toast = document.getElementById('toast');
+    toast.innerText = message;
+    toast.classList.add('show');
+    setTimeout(function() {
+      toast.classList.remove('show');
+    }, 2800);
+  }
+
+  // 13. 시간 포맷팅 함수 (분 → "2시간 30분" or "5시간")
+  function formatMinutesToHours(minutes) {
+    var m = Number(minutes) || 0;
+    var hours = Math.floor(m / 60);
+    var remainingMinutes = m % 60;
+    
+    if (hours === 0 && remainingMinutes === 0) return '0시간 0분';
+    if (remainingMinutes === 0) return hours + '시간';
+    if (hours === 0) return remainingMinutes + '분';
+    return hours + '시간 ' + remainingMinutes + '분';
+  }
+
+  // 27. 금액 포맷팅 함수 (126000 → "126,000원")
+  function formatCurrency(amount) {
+    if (amount === null || amount === undefined || isNaN(amount)) return '-';
+    return Number(amount).toLocaleString('ko-KR') + '원';
+  }
+
+  // 14 & 26. 날짜 문자열 포맷팅 ("9월 7일 ~ 9월 13일")
+  function formatWeekRangeString(startStr, endStr) {
+    if (!startStr || !endStr) return '';
+    var s = new Date(startStr + 'T00:00:00');
+    var e = new Date(endStr + 'T00:00:00');
+    return (s.getMonth() + 1) + '월 ' + s.getDate() + '일 ~ ' + (e.getMonth() + 1) + '월 ' + e.getDate() + '일';
+  }
+
+  function formatDateForInput(date) {
+    var d = new Date(date);
+    var year = d.getFullYear();
+    var month = ('0' + (d.getMonth() + 1)).slice(-2);
+    var day = ('0' + d.getDate()).slice(-2);
+    return year + '-' + month + '-' + day;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+</script>
+</body>
+</html>
