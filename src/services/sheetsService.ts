@@ -466,3 +466,167 @@ export async function toggleEmployeeActiveInSheet(
   });
   if (!updateRes.ok) throw new Error('직원 상태 변경 실패');
 }
+
+/**
+ * Google Apps Script(GAS) 웹 앱 동기화 지원
+ */
+export const GAS_SAMPLE_CODE = `/**
+ * 알바 주간정산 - Google Apps Script 웹앱 연동 스크립트
+ * 1. 연동할 구글 스프레드시트 열기
+ * 2. 상단 메뉴 [확장 프로그램] > [Apps Script] 클릭
+ * 3. 기존 코드를 모두 지우고 아래 코드를 그대로 붙여넣기 후 저장 (Ctrl+S)
+ * 4. 우측 상단 [배포] > [새 배포] 클릭
+ * 5. 유형 선택(톱니바퀴): [웹 앱] 선택
+ * 6. 다음 사용자로 실행: [나], 액세스 권한: [모든 사용자(Anyone)] 로 설정 후 [배포] 클릭
+ * 7. 생성된 웹 앱 URL (https://script.google.com/macros/s/.../exec)을 복사하여 앱에 입력!
+ */
+
+function doGet(e) {
+  return handleRequest(e);
+}
+
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var params = e && e.parameter ? e.parameter : {};
+    var action = params.action || 'getData';
+
+    // 기본 시트 탭 준비
+    ensureSheet(ss, 'Employees', ['employeeId', 'name', 'password', 'hourlyRate', 'active', 'createdAt']);
+    ensureSheet(ss, 'WorkLogs', ['id', 'employeeId', 'employeeName', 'workDate', 'startTime', 'endTime', 'minutesWorked', 'workDescription', 'createdAt']);
+    ensureSheet(ss, 'Settlements', ['settlementId', 'employeeId', 'weekStart', 'weekEnd', 'totalMinutes', 'expectedPay', 'actualPay', 'status', 'settledAt']);
+
+    if (action === 'getData') {
+      var empData = getSheetData(ss.getSheetByName('Employees'));
+      var logData = getSheetData(ss.getSheetByName('WorkLogs'));
+      var setData = getSheetData(ss.getSheetByName('Settlements'));
+
+      return responseJSON({
+        status: 'success',
+        employees: empData,
+        workLogs: logData,
+        settlements: setData
+      });
+    }
+
+    if (action === 'saveData' && e.postData && e.postData.contents) {
+      var body = JSON.parse(e.postData.contents);
+      if (body.employees) replaceSheetData(ss.getSheetByName('Employees'), body.employees, ['employeeId', 'name', 'password', 'hourlyRate', 'active', 'createdAt']);
+      if (body.workLogs) replaceSheetData(ss.getSheetByName('WorkLogs'), body.workLogs, ['id', 'employeeId', 'employeeName', 'workDate', 'startTime', 'endTime', 'minutesWorked', 'workDescription', 'createdAt']);
+      if (body.settlements) replaceSheetData(ss.getSheetByName('Settlements'), body.settlements, ['settlementId', 'employeeId', 'weekStart', 'weekEnd', 'totalMinutes', 'expectedPay', 'actualPay', 'status', 'settledAt']);
+
+      return responseJSON({ status: 'success', message: '데이터가 성공적으로 저장되었습니다.' });
+    }
+
+    return responseJSON({ status: 'error', message: '알 수 없는 요청입니다.' });
+  } catch (err) {
+    return responseJSON({ status: 'error', message: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function ensureSheet(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function getSheetData(sheet) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow <= 1 || lastCol === 0) return [];
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  return values;
+}
+
+function replaceSheetData(sheet, rows, headers) {
+  sheet.clearContents();
+  sheet.appendRow(headers);
+  if (rows && rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  }
+}
+
+function responseJSON(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+export async function fetchGasData(gasUrl: string): Promise<{
+  employees: Employee[];
+  workLogs: WorkLog[];
+  settlements: Settlement[];
+}> {
+  const url = `${gasUrl}${gasUrl.includes('?') ? '&' : '?'}action=getData`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Google Apps Script 연결 실패');
+  const data = await res.json();
+  if (data.status !== 'success') throw new Error(data.message || '데이터 불러오기 실패');
+
+  const employees: Employee[] = (data.employees || []).map((row: any[]) => ({
+    employeeId: String(row[0] || ''),
+    name: String(row[1] || ''),
+    password: String(row[2] || '1234'),
+    hourlyRate: Number(row[3]) || 10030,
+    active: row[4] !== false && String(row[4]).toLowerCase() !== 'false',
+    createdAt: String(row[5] || '')
+  })).filter((e: Employee) => Boolean(e.employeeId && e.name));
+
+  const workLogs: WorkLog[] = (data.workLogs || []).map((row: any[]) => ({
+    id: String(row[0] || ''),
+    employeeId: String(row[1] || ''),
+    employeeName: String(row[2] || ''),
+    workDate: String(row[3] || ''),
+    startTime: String(row[4] || ''),
+    endTime: String(row[5] || ''),
+    minutesWorked: Number(row[6]) || 0,
+    workDescription: String(row[7] || ''),
+    createdAt: String(row[8] || '')
+  })).filter((w: WorkLog) => Boolean(w.id && w.employeeId));
+
+  const settlements: Settlement[] = (data.settlements || []).map((row: any[]) => ({
+    settlementId: String(row[0] || ''),
+    employeeId: String(row[1] || ''),
+    weekStart: String(row[2] || ''),
+    weekEnd: String(row[3] || ''),
+    totalMinutes: Number(row[4]) || 0,
+    expectedPay: Number(row[5]) || 0,
+    actualPay: Number(row[6]) || 0,
+    status: (row[7] === 'SETTLED' ? 'SETTLED' : 'PENDING') as 'PENDING' | 'SETTLED',
+    settledAt: row[8] ? String(row[8]) : undefined
+  })).filter((s: Settlement) => Boolean(s.settlementId && s.employeeId));
+
+  return { employees, workLogs, settlements };
+}
+
+export async function saveGasData(
+  gasUrl: string,
+  payload: {
+    employees?: any[][];
+    workLogs?: any[][];
+    settlements?: any[][];
+  }
+): Promise<void> {
+  const url = `${gasUrl}${gasUrl.includes('?') ? '&' : '?'}action=saveData`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Google Apps Script 데이터 전송 실패');
+  const result = await res.json();
+  if (result.status !== 'success') throw new Error(result.message || '저장 실패');
+}
+

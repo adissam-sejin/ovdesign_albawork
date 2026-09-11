@@ -3,7 +3,8 @@ import {
   Clock, Calendar, Plus, Trash2, CheckCircle2, 
   ChevronLeft, ChevronRight, User, Shield, 
   RefreshCw, ExternalLink, Eye, EyeOff,
-  LogOut, Settings, Users, FileSpreadsheet, AlertTriangle, KeyRound
+  LogOut, Settings, Users, FileSpreadsheet, AlertTriangle, KeyRound,
+  Copy, Check, Code2, Globe
 } from 'lucide-react';
 import { Employee, WorkLog, Settlement, UserSession } from './types';
 import { 
@@ -11,6 +12,7 @@ import {
   googleSignIn, 
   googleSignOut, 
   getAccessToken,
+  isRunningInIframe,
   GoogleAuthUser 
 } from './services/auth';
 import { 
@@ -22,11 +24,15 @@ import {
   addEmployeeToSheet, 
   toggleEmployeeActiveInSheet,
   extractSpreadsheetId,
-  ensureSheetsInitialized
+  ensureSheetsInitialized,
+  fetchGasData,
+  saveGasData,
+  GAS_SAMPLE_CODE
 } from './services/sheetsService';
 
 const DEFAULT_HOURLY_RATE = 12000;
 const SPREADSHEET_STORAGE_KEY = 'alba_connected_spreadsheet_id';
+const GAS_URL_STORAGE_KEY = 'alba_connected_gas_url';
 const EMPLOYEES_STORAGE_KEY = 'alba_employees_list';
 const USER_SESSION_STORAGE_KEY = 'alba_user_session';
 const GOOGLE_EMAIL_KEY = 'alba_connected_google_email';
@@ -47,6 +53,11 @@ export default function App() {
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => {
     return localStorage.getItem(SPREADSHEET_STORAGE_KEY);
   });
+  const [gasUrl, setGasUrl] = useState<string | null>(() => {
+    return localStorage.getItem(GAS_URL_STORAGE_KEY);
+  });
+  const [showGasModal, setShowGasModal] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
@@ -198,8 +209,33 @@ export default function App() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Google Sheets 최신 데이터 동기화
+  // Google Sheets / Apps Script 최신 데이터 동기화
   const syncWithGoogleSheets = useCallback(async (token?: string, sId?: string) => {
+    // 1. Google Apps Script 연동이 활성화된 경우
+    if (gasUrl) {
+      setIsSyncing(true);
+      setSyncError(null);
+      try {
+        const data = await fetchGasData(gasUrl);
+        if (data.employees.length > 0) {
+          setEmployees(data.employees);
+          localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(data.employees));
+        }
+        if (data.workLogs.length > 0) {
+          setWorkLogs(data.workLogs);
+        }
+        setSettlements(data.settlements);
+        showToast('Google Apps Script와 최신 데이터가 동기화되었습니다.');
+      } catch (err: any) {
+        console.error('GAS Sync Error:', err);
+        setSyncError(err.message || 'Google Apps Script 동기화에 실패했습니다.');
+      } finally {
+        setIsSyncing(false);
+      }
+      return;
+    }
+
+    // 2. Google Sheets API 연동
     const activeToken = token || (await getAccessToken());
     const activeSheetId = sId || spreadsheetId;
     if (!activeToken || !activeSheetId) return;
@@ -219,6 +255,7 @@ export default function App() {
 
       if (data.employees.length > 0) {
         setEmployees(data.employees);
+        localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(data.employees));
       }
       if (data.workLogs.length > 0) {
         setWorkLogs(data.workLogs);
@@ -231,7 +268,7 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  }, [spreadsheetId]);
+  }, [spreadsheetId, gasUrl]);
 
   // Auth 초기화 및 리스너 등록
   useEffect(() => {
@@ -314,6 +351,10 @@ export default function App() {
   };
 
   const handleManualSync = async () => {
+    if (gasUrl) {
+      await syncWithGoogleSheets();
+      return;
+    }
     const token = await getAccessToken();
     if (!token) {
       // 세션 갱신을 위해 Google 연동 다이얼로그 호출
@@ -323,14 +364,40 @@ export default function App() {
     }
   };
 
-  // 기존 구글 시트 URL 또는 ID로 연결
+  // 기존 구글 시트 URL 또는 ID, 또는 Google Apps Script 웹 앱 URL 연결
   const handleConnectManualSheet = async () => {
     const input = manualSheetId.trim();
     if (!input) {
-      showToast('구글 시트 URL 또는 스프레드시트 ID를 입력해주세요.');
+      showToast('구글 시트 URL 또는 스프레드시트 ID, 혹은 Apps Script 웹앱 URL을 입력해주세요.');
       return;
     }
 
+    // 1. Google Apps Script Web App URL 감지
+    if (input.includes('script.google.com')) {
+      setIsConnectingGoogle(true);
+      setSyncError(null);
+      showToast('Google Apps Script 웹 앱 연결 확인 중...');
+      try {
+        const data = await fetchGasData(input);
+        setGasUrl(input);
+        localStorage.setItem(GAS_URL_STORAGE_KEY, input);
+        setManualSheetId('');
+        if (data.employees.length > 0) setEmployees(data.employees);
+        if (data.workLogs.length > 0) setWorkLogs(data.workLogs);
+        setSettlements(data.settlements);
+        showToast('Google Apps Script가 성공적으로 연결되었습니다!');
+      } catch (err: any) {
+        console.error('GAS connection error:', err);
+        const errMsg = 'Apps Script 연결 실패: ' + (err.message || '웹 앱 배포 상태를 확인해주세요.');
+        setSyncError(errMsg);
+        showToast(errMsg);
+      } finally {
+        setIsConnectingGoogle(false);
+      }
+      return;
+    }
+
+    // 2. 일반 Google 스프레드시트 ID 또는 URL
     const cleanId = extractSpreadsheetId(input);
     if (!cleanId) {
       showToast('유효한 스프레드시트 ID 또는 URL을 확인할 수 없습니다.');
@@ -369,6 +436,12 @@ export default function App() {
     } finally {
       setIsConnectingGoogle(false);
     }
+  };
+
+  const handleGasDisconnect = () => {
+    setGasUrl(null);
+    localStorage.removeItem(GAS_URL_STORAGE_KEY);
+    showToast('Google Apps Script 연동이 해제되었습니다.');
   };
 
   const handleGoogleDisconnect = async () => {
@@ -753,35 +826,62 @@ export default function App() {
             )}
           </div>
 
-          {currentUser ? (
-            <div className="flex items-center gap-2">
-              {currentUser.role === 'admin' && googleUser && spreadsheetId && (
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-md font-bold flex items-center gap-1 transition-colors"
-                  title="Google 시트 열기"
+          <div className="flex items-center gap-1.5">
+            {/* 새 탭에서 열기 바로가기 */}
+            <button
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="text-[11px] text-neutral-600 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 px-2 py-1 rounded-md font-medium flex items-center gap-1 transition-colors"
+              title="새 창/새 탭에서 열기 (Google 연동 원활)"
+            >
+              <ExternalLink className="w-3 h-3 text-neutral-500" />
+              <span className="hidden sm:inline">새 탭</span>
+            </button>
+
+            {currentUser && (
+              <>
+                {currentUser.role === 'admin' && spreadsheetId && (
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-md font-bold flex items-center gap-1 transition-colors"
+                    title="Google 시트 열기"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline">시트</span>
+                  </a>
+                )}
+                <span className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <User className="w-3 h-3 text-neutral-500" />
+                  {currentUser.name}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs text-neutral-500 hover:text-neutral-900 p-1 font-semibold flex items-center gap-0.5 transition-colors"
+                  title="로그아웃"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="hidden sm:inline">시트</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-              <span className="text-xs font-semibold text-neutral-700 bg-neutral-100 px-2.5 py-1 rounded-full flex items-center gap-1">
-                <User className="w-3 h-3 text-neutral-500" />
-                {currentUser.name}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="text-xs text-neutral-500 hover:text-neutral-900 p-1 font-semibold flex items-center gap-0.5 transition-colors"
-                title="로그아웃"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : null}
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
         </header>
+
+        {/* iframe 내 실행 시 안내 배너 */}
+        {isRunningInIframe() && (
+          <div className="bg-amber-50/90 border-b border-amber-200/80 px-3.5 py-2 text-[11px] text-amber-900 flex items-center justify-between gap-2">
+            <span className="truncate font-medium">
+              💡 Google 시트 연동 시 팝업 차단 방지: <b>새 탭</b>에서 열기 권장
+            </span>
+            <button
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold px-2 py-1 rounded text-[10px] flex items-center gap-1 shrink-0 transition-colors shadow-2xs"
+            >
+              <span>새 탭 열기</span>
+              <ExternalLink className="w-2.5 h-2.5" />
+            </button>
+          </div>
+        )}
 
         {/* 메인 뷰 컨텐츠 */}
         <main className="flex-1 overflow-y-auto p-4 pb-24">
@@ -1333,16 +1433,21 @@ export default function App() {
               </div>
 
               {/* 구글 시트 연동 관리 카드 */}
-              <div className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-xs space-y-3.5">
+              <div className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                    <span className="text-sm font-bold text-neutral-800">Google Sheets 연동 관리</span>
+                    <span className="text-sm font-bold text-neutral-800">Google Sheets / Cloud 연동 관리</span>
                   </div>
-                  {googleUser && spreadsheetId ? (
+                  {gasUrl ? (
+                    <span className="text-xs bg-purple-100 text-purple-800 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                      Apps Script 연동 활성
+                    </span>
+                  ) : googleUser && spreadsheetId ? (
                     <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      연동 활성
+                      Google 시트 연동 활성
                     </span>
                   ) : googleUser ? (
                     <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-full">
@@ -1355,21 +1460,35 @@ export default function App() {
                   )}
                 </div>
 
-                {/* 에러 발생 시 안내 배너 */}
+                {/* 에러 발생 시 친절한 안내 배너 및 해결 버튼 */}
                 {syncError && (
-                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-2">
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-2.5">
                     <div className="font-bold flex items-center gap-1.5 text-rose-900">
                       <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                      <span>연동 안내 / 처리 메시지</span>
+                      <span>Google 연동 안내</span>
                     </div>
                     <p className="leading-relaxed text-neutral-700 font-medium">{syncError}</p>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    
+                    <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200/60 text-[11px] text-neutral-600 space-y-1">
+                      <p className="font-bold text-rose-800">💡 오류 해결 팁:</p>
+                      <p>1. 미리보기 창 내부에서는 브라우저 보안으로 Google 로그인 팝업이 차단될 수 있습니다. 아래 <b>[새 탭에서 열기]</b>를 클릭하여 새 창에서 시도해 보세요.</p>
+                      <p>2. 또는 Google 로그인 팝업 없이 100% 안정적으로 연동되는 <b>Google Apps Script 웹 앱</b> 방식을 이용하실 수도 있습니다.</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        onClick={() => window.open(window.location.href, '_blank')}
+                        className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white rounded-lg font-bold text-xs shadow-xs transition-colors flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>새 탭에서 앱 열기</span>
+                      </button>
                       <button
                         onClick={handleGoogleConnect}
                         disabled={isConnectingGoogle}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
                       >
-                        {isConnectingGoogle ? '연결 시도 중...' : 'Google 다시 연결'}
+                        {isConnectingGoogle ? '연결 시도 중...' : 'Google 다시 시도'}
                       </button>
                       <button
                         onClick={() => setSyncError(null)}
@@ -1381,7 +1500,43 @@ export default function App() {
                   </div>
                 )}
 
-                {googleUser && spreadsheetId ? (
+                {/* 1. Google Apps Script 연동 활성 상태 */}
+                {gasUrl ? (
+                  <div className="space-y-3 text-xs text-neutral-600 bg-purple-50/60 p-3.5 rounded-xl border border-purple-200/70">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-purple-900 flex items-center gap-1.5">
+                        <Code2 className="w-4 h-4 text-purple-600" />
+                        <span>Google Apps Script 웹 앱 연결됨</span>
+                      </div>
+                      {isSyncing && (
+                        <span className="text-[11px] text-purple-700 flex items-center gap-1 font-bold">
+                          <RefreshCw className="w-3 h-3 animate-spin" /> 동기화 중...
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate">
+                      <b>웹 앱 URL:</b> <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-purple-200 select-all">{gasUrl}</code>
+                    </div>
+
+                    <div className="pt-1 flex gap-2">
+                      <button
+                        onClick={handleManualSync}
+                        disabled={isSyncing}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>데이터 즉시 동기화</span>
+                      </button>
+                      <button
+                        onClick={handleGasDisconnect}
+                        className="bg-white border border-neutral-300 hover:bg-neutral-100 text-neutral-700 font-bold py-2.5 px-3 rounded-xl text-xs transition-colors"
+                      >
+                        연결 해제
+                      </button>
+                    </div>
+                  </div>
+                ) : googleUser && spreadsheetId ? (
+                  /* 2. Google OAuth 시트 연동 활성 상태 */
                   <div className="space-y-3 text-xs text-neutral-600 bg-neutral-50 p-3.5 rounded-xl border border-neutral-100">
                     <div className="flex items-center justify-between">
                       <div><b>연동 계정:</b> <span className="text-neutral-900">{googleUser.email || '연동됨'}</span></div>
@@ -1434,79 +1589,94 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <p className="text-xs text-neutral-600 leading-relaxed">
-                      Google 계정을 연동하면 내 Google Drive에 <b>[알바 주간정산]</b> 스프레드시트가 자동으로 생성되며, 알바생들의 근무 기록과 주간 정산 데이터가 클라우드에 영구 보관됩니다.
-                    </p>
+                  /* 3. 미연결 상태: 3가지 연동 방법 제공 */
+                  <div className="space-y-4">
+                    {/* 방법 1: 1-클릭 Google 계정 로그인 */}
+                    <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200/70 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-neutral-800 flex items-center gap-1">
+                          <span className="w-5 h-5 bg-blue-600 text-white text-[11px] font-black rounded-full flex items-center justify-center">1</span>
+                          Google 계정 1-클릭 연동 (추천)
+                        </span>
+                        <button
+                          onClick={() => window.open(window.location.href, '_blank')}
+                          className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5"
+                        >
+                          <span>새 탭에서 열기</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </div>
 
-                    <button
-                      onClick={handleGoogleConnect}
-                      disabled={isConnectingGoogle}
-                      className="w-full py-3 px-4 bg-white hover:bg-neutral-50 active:bg-neutral-100 border border-neutral-300 text-neutral-800 font-bold text-xs rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-xs"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                      </svg>
-                      <span>
-                        {isConnectingGoogle ? 'Google 계정 연결 및 시트 생성 중...' : 'Google 계정 로그인 및 시트 자동 연동'}
-                      </span>
-                    </button>
+                      <p className="text-[11px] text-neutral-600 leading-relaxed">
+                        Google 계정으로 로그인하면 내 드라이브에 <b>[알바 주간정산]</b> 시트가 자동 생성되어 실시간 동기화됩니다.
+                      </p>
 
-                    <div className="text-[11px] text-neutral-400 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200/60 leading-relaxed">
-                      💡 팝업창이 나타나면 Google 계정을 선택하고 드라이브 및 스프레드시트 접근을 허용해주세요. 브라우저에서 팝업이 차단된 경우 우측 상단 팝업 허용 설정을 확인해주세요.
+                      <button
+                        onClick={handleGoogleConnect}
+                        disabled={isConnectingGoogle}
+                        className="w-full py-2.5 px-4 bg-white hover:bg-neutral-100 active:bg-neutral-200 border border-neutral-300 text-neutral-800 font-bold text-xs rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-xs"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                        </svg>
+                        <span>
+                          {isConnectingGoogle ? 'Google 계정 연결 및 시트 생성 중...' : 'Google 계정 로그인 및 시트 자동 연동'}
+                        </span>
+                      </button>
                     </div>
-                  </div>
-                )}
 
-                {/* 다른 스프레드시트 수동 연결 */}
-                <div className="pt-3.5 border-t border-neutral-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-neutral-800">
-                      기존 구글 시트 URL 또는 ID 연결
-                    </span>
-                    <span className="text-[11px] text-neutral-400">
-                      웹 주소창 링크 그대로 붙여넣기 가능
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={manualSheetId}
-                      onChange={(e) => setManualSheetId(e.target.value)}
-                      placeholder="예: https://docs.google.com/spreadsheets/d/.../edit"
-                      className="flex-1 h-9 px-3 border border-neutral-300 rounded-lg text-xs font-mono placeholder:font-sans placeholder:text-neutral-400 focus:outline-none focus:border-blue-500"
-                    />
-                    <button
-                      onClick={handleConnectManualSheet}
-                      disabled={isConnectingGoogle || isSyncing}
-                      className="px-4 bg-neutral-900 hover:bg-neutral-800 active:bg-black text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-xs shrink-0 disabled:opacity-50"
-                    >
-                      {isConnectingGoogle ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>연결 중</span>
-                        </>
-                      ) : (
-                        <span>시트 연결</span>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-neutral-400 leading-normal">
-                    기존 스프레드시트 링크를 붙여넣으시면, 필요한 시트 탭(근무기록/직원목록/주간정산)을 자동으로 감지하고 맞춰 연동합니다.
-                  </p>
-                </div>
+                    {/* 방법 2: Google Apps Script 웹 앱 연동 (OAuth 팝업 없이 100% 안정적) */}
+                    <div className="p-3.5 bg-purple-50/50 rounded-xl border border-purple-200/70 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-purple-950 flex items-center gap-1">
+                          <span className="w-5 h-5 bg-purple-600 text-white text-[11px] font-black rounded-full flex items-center justify-center">2</span>
+                          Google Apps Script(GAS) 웹 앱 연동
+                        </span>
+                        <button
+                          onClick={() => setShowGasModal(true)}
+                          className="text-[11px] text-purple-700 hover:text-purple-900 font-bold underline underline-offset-2 flex items-center gap-0.5"
+                        >
+                          <Code2 className="w-3 h-3" />
+                          <span>스크립트 코드 & 가이드</span>
+                        </button>
+                      </div>
 
-                {googleUser && (
-                  <div className="pt-2 text-right">
-                    <button
-                      onClick={handleGoogleDisconnect}
-                      className="text-xs text-neutral-400 hover:text-rose-600 font-semibold"
-                    >
-                      Google 계정 연결 해제
-                    </button>
+                      <p className="text-[11px] text-neutral-600 leading-relaxed">
+                        구글 시트의 [확장 프로그램] &gt; [Apps Script]에 제공된 코드를 붙여넣고 배포한 웹 앱 URL을 입력하면, 팝업 승인 없이 즉시 연동됩니다.
+                      </p>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={manualSheetId}
+                          onChange={(e) => setManualSheetId(e.target.value)}
+                          placeholder="https://script.google.com/macros/s/.../exec"
+                          className="flex-1 h-9 px-3 bg-white border border-purple-200 rounded-lg text-xs font-mono placeholder:font-sans placeholder:text-neutral-400 focus:outline-none focus:border-purple-500"
+                        />
+                        <button
+                          onClick={handleConnectManualSheet}
+                          disabled={isConnectingGoogle || isSyncing}
+                          className="px-3.5 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shadow-xs shrink-0 disabled:opacity-50"
+                        >
+                          {isConnectingGoogle ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
+                          <span>URL 연결</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 방법 3: 기존 구글 스프레드시트 URL/ID 연결 */}
+                    <div className="p-3.5 bg-neutral-50/60 rounded-xl border border-neutral-200/70 space-y-2">
+                      <span className="text-xs font-bold text-neutral-800 flex items-center gap-1">
+                        <span className="w-5 h-5 bg-neutral-700 text-white text-[11px] font-black rounded-full flex items-center justify-center">3</span>
+                        기존 스프레드시트 링크 붙여넣기
+                      </span>
+                      <p className="text-[11px] text-neutral-500 leading-relaxed">
+                        이미 사용하는 구글 스프레드시트 주소창의 링크를 위 입력창에 넣고 [시트 연결]을 누르셔도 자동 인식됩니다.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1805,6 +1975,104 @@ export default function App() {
                   className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl"
                 >
                   {isSubmitting ? '삭제 중...' : '삭제'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Google Apps Script 연동 가이드 모달 */}
+        {showGasModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="w-full max-w-lg bg-white rounded-2xl p-5 shadow-2xl space-y-4 my-8 max-h-[90vh] flex flex-col">
+              <div className="flex justify-between items-center border-b border-neutral-100 pb-3">
+                <div className="flex items-center gap-2 text-purple-900">
+                  <Code2 className="w-5 h-5 text-purple-600" />
+                  <h3 className="text-base font-bold">Google Apps Script (GAS) 연동 가이드</h3>
+                </div>
+                <button
+                  onClick={() => setShowGasModal(false)}
+                  className="text-neutral-400 hover:text-neutral-600 font-bold p-1 text-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs text-neutral-700">
+                <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 text-purple-950 leading-relaxed">
+                  💡 <b>Apps Script 연동의 장점:</b> 브라우저 팝업 차단이나 Google OAuth 토큰 만료 문제 없이, 구글 스프레드시트와 100% 안정적으로 데이터를 실시간 입출력할 수 있습니다.
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-bold text-neutral-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 bg-purple-600 text-white rounded-full flex items-center justify-center text-[10px]">1</span>
+                    스프레드시트에서 Apps Script 열기
+                  </h4>
+                  <p className="text-neutral-600 pl-5 leading-normal">
+                    사용하실 구글 스프레드시트를 열고, 상단 메뉴에서 <b>[확장 프로그램] &gt; [Apps Script]</b>를 클릭합니다.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-bold text-neutral-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 bg-purple-600 text-white rounded-full flex items-center justify-center text-[10px]">2</span>
+                    스크립트 코드 붙여넣기 및 저장
+                  </h4>
+                  <p className="text-neutral-600 pl-5 leading-normal">
+                    편집기에 있는 기존 코드를 모두 지우고, 아래 코드를 복사하여 붙여넣은 뒤 <b>저장 (Ctrl+S 또는 Cmd+S)</b>합니다.
+                  </p>
+                  <div className="pl-5 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-mono text-neutral-500">Code.gs</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(GAS_SAMPLE_CODE);
+                          showToast('Apps Script 코드가 클립보드에 복사되었습니다!');
+                        }}
+                        className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-[11px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>코드 복사하기</span>
+                      </button>
+                    </div>
+                    <pre className="p-3 bg-neutral-900 text-neutral-100 rounded-xl font-mono text-[11px] max-h-48 overflow-y-auto leading-relaxed select-all">
+                      {GAS_SAMPLE_CODE}
+                    </pre>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-bold text-neutral-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 bg-purple-600 text-white rounded-full flex items-center justify-center text-[10px]">3</span>
+                    웹 앱으로 배포하기
+                  </h4>
+                  <ul className="list-disc pl-9 text-neutral-600 space-y-1 leading-normal">
+                    <li>Apps Script 우측 상단 <b>[배포] &gt; [새 배포]</b> 클릭</li>
+                    <li>톱니바퀴 아이콘에서 <b>[웹 앱]</b> 선택</li>
+                    <li>설명: <code className="bg-neutral-100 px-1 py-0.5 rounded">알바정산 API</code></li>
+                    <li>다음 사용자 권한으로 실행: <b>나 (내 이메일)</b></li>
+                    <li>액세스 권한: <b>모든 사용자 (Anyone)</b> (★필수★)</li>
+                    <li>[배포] 클릭 후 권한 승인 완료</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-bold text-neutral-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 bg-purple-600 text-white rounded-full flex items-center justify-center text-[10px]">4</span>
+                    생성된 웹 앱 URL 복사 및 연결
+                  </h4>
+                  <p className="text-neutral-600 pl-5 leading-normal">
+                    배포 완료 후 나타나는 <b>웹 앱 URL</b>(<code className="font-mono text-[10px] bg-neutral-100 px-1">https://script.google.com/macros/s/.../exec</code>)을 복사하여 본 앱의 [Google Apps Script 웹 앱 연동] 입력창에 붙여넣고 연결하시면 끝납니다!
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-neutral-100 flex justify-end">
+                <button
+                  onClick={() => setShowGasModal(false)}
+                  className="px-5 py-2.5 bg-neutral-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                >
+                  확인 완료
                 </button>
               </div>
             </div>
